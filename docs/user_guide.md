@@ -28,6 +28,8 @@
 
 [Templated Benchmarks](#templated-benchmarks)
 
+[Templated Benchmarks that take arguments](#templated-benchmarks-with-arguments)
+
 [Fixtures](#fixtures)
 
 [Custom Counters](#custom-counters)
@@ -574,6 +576,30 @@ Three macros are provided for adding benchmark templates.
 #define BENCHMARK_TEMPLATE2(func, arg1, arg2)
 ```
 
+<a name="templated-benchmarks-with-arguments" />
+
+## Templated Benchmarks that take arguments
+
+Sometimes there is a need to template benchmarks, and provide arguments to them.
+
+```c++
+template <class Q> void BM_Sequential_With_Step(benchmark::State& state, int step) {
+  Q q;
+  typename Q::value_type v;
+  for (auto _ : state) {
+    for (int i = state.range(0); i-=step; )
+      q.push(v);
+    for (int e = state.range(0); e-=step; )
+      q.Wait(&v);
+  }
+  // actually messages, not bytes:
+  state.SetBytesProcessed(
+      static_cast<int64_t>(state.iterations())*state.range(0));
+}
+
+BENCHMARK_TEMPLATE1_CAPTURE(BM_Sequential, WaitQueue<int>, Step1, 1)->Range(1<<0, 1<<10);
+```
+
 <a name="fixtures" />
 
 ## Fixtures
@@ -591,10 +617,10 @@ For Example:
 ```c++
 class MyFixture : public benchmark::Fixture {
 public:
-  void SetUp(const ::benchmark::State& state) {
+  void SetUp(::benchmark::State& state) {
   }
 
-  void TearDown(const ::benchmark::State& state) {
+  void TearDown(::benchmark::State& state) {
   }
 };
 
@@ -861,7 +887,7 @@ BENCHMARK(BM_OpenMP)->Range(8, 8<<10);
 
 // Measure the user-visible time, the wall clock (literally, the time that
 // has passed on the clock on the wall), use it to decide for how long to
-// run the benchmark loop. This will always be meaningful, an will match the
+// run the benchmark loop. This will always be meaningful, and will match the
 // time spent by the main thread in single-threaded case, in general decreasing
 // with the number of internal threads doing the work.
 BENCHMARK(BM_OpenMP)->Range(8, 8<<10)->UseRealTime();

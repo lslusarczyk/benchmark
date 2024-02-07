@@ -1,56 +1,59 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
+
+licenses(["notice"])
+
+package(default_visibility = ["//visibility:public"])
 
 config_setting(
     name = "msvc_compiler",
     flag_values = {"@bazel_tools//tools/cpp:compiler": "msvc-cl"},
 )
 
+selects.config_setting_group(
+    name = "winplusmsvc",
+    match_all = [
+        "@platforms//os:windows",
+        ":msvc_compiler",
+    ],
+)
+
 cc_library(
     name = "nanobind",
-    hdrs = glob(
-        include = [
-            "include/nanobind/*.h",
-            "include/nanobind/stl/*.h",
-            "include/nanobind/detail/*.h",
-        ],
-        exclude = [],
-    ),
-    srcs = [
-        "include/nanobind/stl/detail/nb_dict.h",
-        "include/nanobind/stl/detail/nb_list.h",
-        "include/nanobind/stl/detail/traits.h",
-        "ext/robin_map/include/tsl/robin_map.h",
-        "ext/robin_map/include/tsl/robin_hash.h",
-        "ext/robin_map/include/tsl/robin_growth_policy.h",
-        "ext/robin_map/include/tsl/robin_set.h",
-        "src/buffer.h",
-        "src/common.cpp",
-        "src/error.cpp",
-        "src/implicit.cpp",
-        "src/nb_enum.cpp",
-        "src/nb_func.cpp",
-        "src/nb_internals.cpp",
-        "src/nb_internals.h",
-        "src/nb_ndarray.cpp",
-        "src/nb_type.cpp",
-        "src/trampoline.cpp",
-    ],
-    copts = select({
-        ":msvc_compiler": [],
-        "//conditions:default": [
-        "-fexceptions",
-        "-Os",  # size optimization
-        "-flto", # enable LTO
-        ],
-    }),
-    linkopts = select({
-        "@com_github_google_benchmark//:macos": [
-        "-undefined dynamic_lookup",
-        "-Wl,-no_fixup_chains",
-        "-Wl,-dead_strip",
-        ],
+    srcs = glob([
+        "src/*.cpp",
+    ]),
+    additional_linker_inputs = select({
+        "@platforms//os:macos": [":cmake/darwin-ld-cpython.sym"],
         "//conditions:default": [],
     }),
-    includes = ["include", "ext/robin_map/include"],
+    copts = select({
+        ":msvc_compiler": [
+            "/EHsc",  # exceptions
+            "/Os",  # size optimizations
+            "/GL",  # LTO / whole program optimization
+        ],
+        # these should work on both clang and gcc.
+        "//conditions:default": [
+            "-fexceptions",
+            "-flto",
+            "-Os",
+        ],
+    }),
+    includes = [
+        "ext/robin_map/include",
+        "include",
+    ],
+    linkopts = select({
+        ":winplusmsvc": ["/LTGC"],  # Windows + MSVC.
+        "@platforms//os:macos": ["-Wl,@$(location :cmake/darwin-ld-cpython.sym)"],  # Apple.
+        "//conditions:default": [],
+    }),
+    textual_hdrs = glob(
+        [
+            "include/**/*.h",
+            "src/*.h",
+            "ext/robin_map/include/tsl/*.h",
+        ],
+    ),
     deps = ["@python_headers"],
-    visibility = ["//visibility:public"],
 )

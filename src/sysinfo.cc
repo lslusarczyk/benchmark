@@ -15,6 +15,10 @@
 #include "internal_macros.h"
 
 #ifdef BENCHMARK_OS_WINDOWS
+#if !defined(WINVER) || WINVER < 0x0600
+#undef WINVER
+#define WINVER 0x0600
+#endif  // WINVER handling
 #include <shlwapi.h>
 #undef StrCat  // Don't let StrCat in string_util.h be renamed to lstrcatA
 #include <versionhelpers.h>
@@ -328,7 +332,7 @@ std::vector<CPUInfo::CacheInfo> GetCacheSizesWindows() {
 
   using UPtr = std::unique_ptr<PInfo, decltype(&std::free)>;
   GetLogicalProcessorInformation(nullptr, &buffer_size);
-  UPtr buff((PInfo*)malloc(buffer_size), &std::free);
+  UPtr buff(static_cast<PInfo*>(std::malloc(buffer_size)), &std::free);
   if (!GetLogicalProcessorInformation(buff.get(), &buffer_size))
     PrintErrorAndDie("Failed during call to GetLogicalProcessorInformation: ",
                      GetLastError());
@@ -456,6 +460,8 @@ std::string GetSystemName() {
 #define HOST_NAME_MAX 256
 #elif defined(BENCHMARK_OS_SOLARIS)
 #define HOST_NAME_MAX MAXHOSTNAMELEN
+#elif defined(BENCHMARK_OS_ZOS)
+#define HOST_NAME_MAX _POSIX_HOST_NAME_MAX
 #else
 #pragma message("HOST_NAME_MAX not defined. using 64")
 #define HOST_NAME_MAX 64
@@ -651,7 +657,7 @@ double GetCPUCyclesPerSecond(CPUInfo::Scaling scaling) {
                       &freq)) {
     // The value is in kHz (as the file name suggests).  For example, on a
     // 2GHz warpstation, the file contains the value "2000000".
-    return freq * 1000.0;
+    return static_cast<double>(freq) * 1000.0;
   }
 
   const double error_value = -1;
@@ -738,8 +744,8 @@ double GetCPUCyclesPerSecond(CPUInfo::Scaling scaling) {
           SHGetValueA(HKEY_LOCAL_MACHINE,
                       "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
                       "~MHz", nullptr, &data, &data_size)))
-    return static_cast<double>((int64_t)data *
-                               (int64_t)(1000 * 1000));  // was mhz
+    return static_cast<double>(static_cast<int64_t>(data) *
+                               static_cast<int64_t>(1000 * 1000));  // was mhz
 #elif defined(BENCHMARK_OS_SOLARIS)
   kstat_ctl_t* kc = kstat_open();
   if (!kc) {
@@ -771,8 +777,9 @@ double GetCPUCyclesPerSecond(CPUInfo::Scaling scaling) {
   kstat_close(kc);
   return clock_hz;
 #elif defined(BENCHMARK_OS_QNX)
-  return static_cast<double>((int64_t)(SYSPAGE_ENTRY(cpuinfo)->speed) *
-                             (int64_t)(1000 * 1000));
+  return static_cast<double>(
+      static_cast<int64_t>(SYSPAGE_ENTRY(cpuinfo)->speed) *
+      static_cast<int64_t>(1000 * 1000));
 #elif defined(BENCHMARK_OS_QURT)
   // QuRT doesn't provide any API to query Hexagon frequency.
   return 1000000000;
@@ -817,7 +824,7 @@ std::vector<double> GetLoadAvg() {
 #if (defined BENCHMARK_OS_FREEBSD || defined(BENCHMARK_OS_LINUX) ||     \
      defined BENCHMARK_OS_MACOSX || defined BENCHMARK_OS_NETBSD ||      \
      defined BENCHMARK_OS_OPENBSD || defined BENCHMARK_OS_DRAGONFLY) && \
-    !defined(__ANDROID__)
+    !(defined(__ANDROID__) && __ANDROID_API__ < 29)
   static constexpr int kMaxSamples = 3;
   std::vector<double> res(kMaxSamples, 0.0);
   const int nelem = getloadavg(res.data(), kMaxSamples);
